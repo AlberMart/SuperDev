@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Superman Path</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #f0f0f0;
+      font-family: sans-serif;
+    }
+
+    #container {
+      position: relative;
+      width: 100%;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .block {
+      position: relative;
+      background: white;
+      margin: 80px 0;
+      padding: 100px 40px;
+      font-size: 1.5rem;
+      line-height: 1.5;
+      border-radius: 12px;
+      z-index: 0;
+    }
+	
+
+    #tail-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+      overflow: visible;
+    }
+  </style>
+</head>
+<body>
+
+<div id="container">
+  <svg id="tail-svg">
+    <path id="tail"
+          fill="none"
+          stroke="red"
+          stroke-width="4"
+          stroke-linecap="round"
+          stroke-dasharray="1000"
+          stroke-dashoffset="1000" />
+    <image id="superman"
+           href="superman.png"
+           width="60"
+           height="60"
+           x="0"
+           y="0"
+           visibility="hidden"
+           transform="rotate(0)" />
+  </svg>
+
+  <div class="block">Блок 1. Супермен начинает путь!</div>
+  <div class="block" style="z-index: 10;">Блок 2. Он уходит влево...</div>
+  <div class="block">Блок 3. А потом направо...</div>
+  <div class="block">Блок 4. Плавные повороты...</div>
+  <div class="block">Блок 5. Почти финиш!</div>
+  <div class="block">Блок 6. Вот он, конец пути.</div>
+  
+</div>
+
+<script>
+  const svg = document.getElementById("tail-svg");
+  const path = document.getElementById("tail");
+  const superman = document.getElementById("superman");
+  const blocks = document.querySelectorAll(".block");
+  const container = document.getElementById("container");
+
+  let totalLength = 0;
+  let currentLength = 0;
+  let targetLength = 0;
+
+  // 💡 Новый формат точек с относительными координатами внутри блока
+  const pathPoints = [
+    { blockIndex: 0, xOffset: 0.9, yOffset: 0.1 },
+    { blockIndex: 1, xOffset: 0.1, yOffset: 0.5 },
+    { blockIndex: 2, xOffset: 0.8, yOffset: 0.5 },
+    { blockIndex: 3, xOffset: 0.1, yOffset: 0.5 },
+    { blockIndex: 4, xOffset: 0.9, yOffset: 0.5 },
+    { blockIndex: 5, xOffset: 0.5, yOffset: 0.9 }
+  ];
+
+  // 📌 Получаем координаты в системе SVG
+  function getPoint(block, xOffset, yOffset, svgRect) {
+    const rect = block.getBoundingClientRect();
+    const x = rect.left - svgRect.left + rect.width * xOffset;
+    const y = rect.top - svgRect.top + rect.height * yOffset;
+    return { x, y };
+  }
+
+  // 🧠 Рисуем путь с кривыми (Catmull-Rom-подобный подход)
+  function drawPath() {
+    const svgRect = svg.getBoundingClientRect();
+
+    const points = pathPoints.map(p => {
+      const block = blocks[p.blockIndex];
+      return getPoint(block, p.xOffset, p.yOffset, svgRect);
+    });
+
+    if (points.length < 2) return;
+
+    let d = `M ${points[0].x},${points[0].y}`;
+
+    for (let i = 1; i < points.length; i++) {
+      const p0 = points[i - 2] || points[i - 1];
+      const p1 = points[i - 1];
+      const p2 = points[i];
+      const p3 = points[i + 1] || p2;
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+
+      d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+    }
+
+    path.setAttribute("d", d);
+    totalLength = path.getTotalLength();
+    path.style.strokeDasharray = totalLength;
+  }
+
+  // 📏 Проверка, достигли ли конца страницы
+  function isAtBottom() {
+    const scrollBottom = window.scrollY + window.innerHeight;
+    const pageHeight = document.documentElement.scrollHeight;
+    return scrollBottom >= pageHeight - 5;
+  }
+
+  // 🎯 Обновляем целевую длину пути
+  function updateTargetLength() {
+    const svgRect = container.getBoundingClientRect();
+    const centerInSVG = window.innerHeight / 2 - svgRect.top;
+    const activationOffset = svgRect.height * 0.1;
+
+    let progress = (centerInSVG - activationOffset) / (svgRect.height - activationOffset);
+    progress = Math.max(0, Math.min(1, progress));
+
+    if (isAtBottom()) {
+      targetLength = totalLength;
+    } else if (window.scrollY === 0) {
+      targetLength = 0;
+    } else {
+      targetLength = totalLength * progress;
+    }
+
+    return targetLength;
+  }
+
+  // 🚀 Анимация супермена
+  function animate() {
+    // Инициализация первого кадра
+    if (typeof animate.firstFrame === "undefined") {
+      currentLength = targetLength;
+      animate.firstFrame = true;
+    } else {
+      currentLength += (targetLength - currentLength) * 0.1;
+    }
+
+    path.style.strokeDashoffset = totalLength - currentLength;
+
+    if (currentLength >= 0 && currentLength < totalLength) {
+      const point = path.getPointAtLength(currentLength);
+      const next = path.getPointAtLength(Math.min(currentLength + 1, totalLength));
+      const angle = Math.atan2(next.y - point.y, next.x - point.x) * (180 / Math.PI);
+
+      superman.setAttribute("x", point.x - 30);
+      superman.setAttribute("y", point.y - 30);
+      superman.setAttribute("transform", `rotate(${angle} ${point.x} ${point.y})`);
+      superman.setAttribute("visibility", "visible");
+    } else if (currentLength >= totalLength) {
+      const last = path.getPointAtLength(totalLength);
+      superman.setAttribute("x", last.x - 30);
+      superman.setAttribute("y", last.y - 30);
+      superman.setAttribute("transform", `rotate(0 ${last.x} ${last.y})`);
+      superman.setAttribute("visibility", "visible");
+    } else {
+      superman.setAttribute("visibility", "hidden");
+    }
+
+    requestAnimationFrame(animate);
+  }
+
+  // 📌 Обработчики
+  window.addEventListener("scroll", () => {
+    updateTargetLength();
+  });
+
+  window.addEventListener("resize", () => {
+    drawPath();
+    updateTargetLength();
+  });
+
+  window.addEventListener("load", () => {
+    drawPath();
+    updateTargetLength();
+    animate();
+  });
+</script>
+
+</body>
+</html>
